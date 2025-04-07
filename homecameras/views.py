@@ -15,6 +15,7 @@ import numpy as np
 from ultralytics import YOLO
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.parsers import MultiPartParser, FormParser
+from datetime import datetime
 
 
 class LoginView(APIView):
@@ -89,8 +90,6 @@ class AddCameraView(APIView):
         serializer = CameraSerializer(camera)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-def profileImage(request):
-    return FileResponse(open('C:\\Users\\User\\OneDrive\\Desktop\\laugh.jpg', 'rb'), content_type='image/jpeg')
 
 
 
@@ -131,8 +130,63 @@ class ObjectDetectionView(APIView):
 
 
 
-original_model = YOLO("yolov8n.pt")  
-trained_model = YOLO("C:\\runs\\detect\\train2\\weights\\best.pt")  
+# original_model = YOLO("yolov8n.pt")  
+# trained_model = YOLO("C:\\runs\\detect\\train2\\weights\\best.pt")  
+
+# def detect_objects(frame, model):
+#     results = model(frame)
+#     detections = []
+
+#     for result in results:
+#         for box in result.boxes:
+#             x1, y1, x2, y2 = map(int, box.xyxy[0])  # Bounding box
+#             confidence = float(box.conf[0])  # Confidence score
+#             class_id = int(box.cls[0])  # Object class ID
+#             label = model.names[class_id]  # Class name
+
+#             detections.append({
+#                 "label": label,
+#                 "confidence": confidence,
+#                 "bobox": (x1, y1, x2, y2)
+#             })
+
+#     return detections
+
+# def generate_frames():
+#     cap = cv2.VideoCapture(0)  
+
+#     while cap.isOpened():
+#         success, frame = cap.read()
+#         if not success:
+#             break
+
+#         detections = detect_objects(frame, original_model)
+
+#         if not detections:
+#             detections = detect_objects(frame, trained_model)
+
+#         for det in detections:
+#             x1, y1, x2, y2 = det["bobox"]
+#             label = det["label"]
+#             confidence = det["confidence"]
+
+            
+#             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+#             cv2.putText(frame, f"{label} ({confidence:.2f})", (x1, y1-10),
+#                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+#         _, buffer = cv2.imencode('.jpg', frame)
+#         yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+
+#     cap.release()
+
+# def stream(request):
+#     return StreamingHttpResponse(generate_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
+
+
+# Initialize the models only once to avoid loading multiple times
+original_model = YOLO("yolov8n.pt")
+trained_model = YOLO("C:\\runs\\detect\\train2\\weights\\best.pt")
 
 def detect_objects(frame, model):
     results = model(frame)
@@ -140,7 +194,7 @@ def detect_objects(frame, model):
 
     for result in results:
         for box in result.boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0])  # Bounding box
+            x1, y1, x2, y2 = map(int, box.xyxy[0])  # Bounding box coordinates
             confidence = float(box.conf[0])  # Confidence score
             class_id = int(box.cls[0])  # Object class ID
             label = model.names[class_id]  # Class name
@@ -154,8 +208,11 @@ def detect_objects(frame, model):
     return detections
 
 def generate_frames():
-    cap = cv2.VideoCapture(0)  
-
+    cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)  # Open the webcam
+    
+    if not cap.isOpened():
+        raise Exception("Failed to open camera")
+    
     while cap.isOpened():
         success, frame = cap.read()
         if not success:
@@ -171,20 +228,21 @@ def generate_frames():
             label = det["label"]
             confidence = det["confidence"]
 
-            
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(frame, f"{label} ({confidence:.2f})", (x1, y1-10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
+        # Encode frame to JPEG
         _, buffer = cv2.imencode('.jpg', frame)
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+        
+        # Yield the frame in a streaming response
+        yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
-    cap.release()
+    cap.release()  # Release the camera when done
 
 def stream(request):
+    # Return the streaming response
     return StreamingHttpResponse(generate_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
-
 
 
 class UpdateUserProfileView(APIView):
@@ -224,3 +282,6 @@ def get_profile_image(request):
     user_profile = UserProfileImage.objects.get(user=request.user)
     full_image_url = request.build_absolute_uri(user_profile.image.url)
     return Response({'image_url': full_image_url})
+
+
+
